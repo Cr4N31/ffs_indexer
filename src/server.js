@@ -1,3 +1,5 @@
+import dns from "dns"
+dns.setDefaultResultOrder("ipv4first")
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
@@ -5,17 +7,17 @@ import { apiRouter } from './routes/api.js'
 import { connectDb, closeDb } from './db.js'
 import { startIndexer } from './indexer.js'
 
+
 const app = express()
 const port = Number(process.env.PORT || 4000)
 
 app.use(cors({
   origin: (origin, callback) => {
-    // allow any localhost origin in development
-    if (!origin || origin.startsWith('http://localhost')) {
-      callback(null, true)
-    } else {
-      callback(new Error('Not allowed by CORS'))
+    if (!origin) return callback(null, true)
+    if (origin === process.env.CORS_ORIGIN) {
+      return callback(null, true)
     }
+    callback(null, false)
   }
 }))
 
