@@ -13,7 +13,9 @@ const port = Number(process.env.PORT || 4000)
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true)
+    if (!origin || origin.startsWith('http://localhost')) {
+      return callback(null, true)
+    }
     if (origin === process.env.CORS_ORIGIN) {
       return callback(null, true)
     }
