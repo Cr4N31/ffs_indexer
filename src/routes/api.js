@@ -137,4 +137,18 @@ apiRouter.get('/round/current', async (_req, res, next) => {
   }
 })
 
+apiRouter.get('/holders', async (_req, res, next) => {
+  try {
+    const response = await fetch(
+      `https://api.cronoscan.com/api?module=token&action=tokenholderlist&contractaddress=${process.env.FFS_TOKEN_ADDRESS}&apikey=${process.env.CRONOSCAN_API_KEY}`
+    )
+    const data = await response.json()
+    const count = Array.isArray(data.result) ? data.result.length : 0
+    res.json({ holders: count })
+  } catch (error) {
+    next(error)
+  }
+})
+
+
 export { apiRouter }
