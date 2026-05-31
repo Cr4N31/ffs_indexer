@@ -43,12 +43,12 @@ export function createChainClient() {
   const rpcUrl = process.env.RPC_URL || process.env.CRONOS_TESTNET_RPC_URL
   if (!rpcUrl) throw new Error('RPC_URL or CRONOS_TESTNET_RPC_URL is required.')
 
-  const chainId = Number(process.env.CHAIN_ID || '338')
+  const chainId = Number(process.env.CHAIN_ID || '25')
 
   const chain = defineChain({
     id: chainId,
     name: process.env.CHAIN_NAME || 'Cronos Testnet',
-    nativeCurrency: { name: 'Cronos', symbol: 'tCRO', decimals: 18 },
+    nativeCurrency: { name: 'Cronos', symbol: 'CRO', decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
   })
 
