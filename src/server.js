@@ -42,15 +42,31 @@ try {
   process.exit(1)
 }
 
-const stopIndexer = startIndexer()
-
 const server = app.listen(port, () => {
   console.log(`FFS indexer API listening on http://localhost:${port}`)
 })
 
+let stopIndexer = null
+
+async function initializeIndexer() {
+  try {
+    stopIndexer = await startIndexer()
+  } catch (error) {
+    console.error('Indexer failed to start:', error)
+  }
+}
+
+initializeIndexer()
+
 async function shutdown() {
-  stopIndexer()
-  server.close()
+  if (stopIndexer) {
+    stopIndexer()
+  }
+
+  server.close(() => {
+    console.log('Server closed')
+  })
+
   await closeDb()
 }
 

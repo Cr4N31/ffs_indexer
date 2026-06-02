@@ -70,19 +70,40 @@ async function updateRoundAfterSip(roundNumber, winner, winnerAmount, treasuryAm
 
 async function handlePoured(log) {
   try {
-    const { round, user, amount } = log.args
+    const { round, user, croAmount, ffsAmount, bottleBalance, roundPours } = log.args
     await ensureRoundExists(round)
 
     await query(
       `
-        insert into pours (wallet_address, amount, transaction_hash, round_number, poured_at)
-        values ($1, $2, $3, $4, now())
+        insert into pours (
+          wallet_address,
+          amount,
+          cro_amount,
+          ffs_amount,
+          bottle_balance,
+          round_pours,
+          transaction_hash,
+          round_number,
+          poured_at
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, now())
         on conflict (transaction_hash) do nothing
       `,
-      [user, formatUnits(amount, 18), log.transactionHash, Number(round)],
+      [
+        user,
+        formatUnits(croAmount, 18),
+        formatUnits(croAmount, 18),
+        formatUnits(ffsAmount, 18),
+        formatUnits(bottleBalance, 18),
+        Number(roundPours),
+        log.transactionHash,
+        Number(round),
+      ],
     )
 
-    console.log(`[POUR] ${user} poured ${formatFfs(amount)} FFS in round ${round}`)
+    console.log(
+      `[POUR] ${user} poured ${formatFfs(croAmount)} CRO and ${formatFfs(ffsAmount)} FFS in round ${round}`,
+    )
   } catch (error) {
     console.error(`Failed to record pour event ${log.transactionHash}:`, error)
   }

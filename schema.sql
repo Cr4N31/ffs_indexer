@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS pours (
   id SERIAL PRIMARY KEY,
   wallet_address VARCHAR(42) NOT NULL,
   amount NUMERIC NOT NULL,
+  cro_amount NUMERIC NOT NULL,
+  ffs_amount NUMERIC NOT NULL,
+  bottle_balance NUMERIC NOT NULL,
+  round_pours INTEGER NOT NULL,
   transaction_hash VARCHAR(66) UNIQUE NOT NULL,
   round_number INTEGER NOT NULL,
   poured_at TIMESTAMP DEFAULT NOW()
