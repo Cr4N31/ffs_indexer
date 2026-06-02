@@ -5,22 +5,23 @@ import { configVariable, defineConfig } from "hardhat/config";
 
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin, hardhatEthersPlugin],
+
+  paths: {
+    sources: "./contracts",
+    artifacts: "./artifacts",
+    cache: "./cache",
+  },
+
   solidity: {
-    profiles: {
-      default: {
-        version: "0.8.28",
-      },
-      production: {
-        version: "0.8.28",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
-        },
+    version: "0.8.28",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
       },
     },
   },
+
   networks: {
     hardhatMainnet: {
       type: "edr-simulated",
@@ -38,11 +39,13 @@ export default defineConfig({
       url: "http://127.0.0.1:8545",
     },
   },
+
   verify: {
     etherscan: {
       apiKey: configVariable("CRONOSCAN_API_KEY"),
     },
   },
+
   chainDescriptors: {
     338: {
       name: "Cronos Testnet",

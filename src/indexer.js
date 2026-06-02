@@ -22,6 +22,8 @@ async function ensureRoundExists(roundNumber) {
 
 async function handleRoundStarted(log) {
   try {
+    if (!log?.args) return
+
     const { round } = log.args
     await ensureRoundExists(round)
     console.log(`[ROUND] Round ${round} started`)
@@ -30,47 +32,12 @@ async function handleRoundStarted(log) {
   }
 }
 
-async function updateRoundAfterSip(roundNumber, winner, winnerAmount, treasuryAmount) {
-  const participantsResult = await query(
-    `
-      select count(distinct wallet_address) as participant_count,
-             coalesce(sum(amount), 0) as total_collected
-      from pours
-      where round_number = $1
-    `,
-    [Number(roundNumber)],
-  )
-
-  const participantsCount = Number(participantsResult.rows[0]?.participant_count ?? 0)
-  const totalCollected = participantsResult.rows[0]?.total_collected ?? 0
-
-  await query(
-    `
-      update rounds
-      set ended_at = now(),
-          total_collected = $1,
-          winner_address = $2,
-          winner_amount = $3,
-          treasury_amount = $4,
-          participants_count = $5
-      where round_number = $6
-    `,
-    [totalCollected, winner, winnerAmount, treasuryAmount, participantsCount, Number(roundNumber)],
-  )
-
-  await query(
-    `
-      insert into rounds (round_number, started_at, participants_count)
-      values ($1, now(), 0)
-      on conflict (round_number) do nothing
-    `,
-    [Number(roundNumber) + 1],
-  )
-}
-
 async function handlePoured(log) {
   try {
+    if (!log?.args) return
+
     const { round, user, croAmount, ffsAmount, bottleBalance, roundPours } = log.args
+
     await ensureRoundExists(round)
 
     await query(
@@ -111,17 +78,30 @@ async function handlePoured(log) {
 
 async function handleBottleSipped(log) {
   try {
-    const { round, winner, winnerAmount, treasuryAmount } = log.args
+    if (!log?.args) return
 
-    await updateRoundAfterSip(round, winner, formatUnits(winnerAmount, 18), formatUnits(treasuryAmount, 18))
+    const { round, winner, winnerAmount, treasuryAmount } = log.args
 
     await query(
       `
-        insert into winners (winner_address, amount_won, treasury_amount, transaction_hash, round_number, won_at)
+        insert into winners (
+          winner_address,
+          amount_won,
+          treasury_amount,
+          transaction_hash,
+          round_number,
+          won_at
+        )
         values ($1, $2, $3, $4, $5, now())
         on conflict (transaction_hash) do nothing
       `,
-      [winner, formatUnits(winnerAmount, 18), formatUnits(treasuryAmount, 18), log.transactionHash, Number(round)],
+      [
+        winner,
+        formatUnits(winnerAmount, 18),
+        formatUnits(treasuryAmount, 18),
+        log.transactionHash,
+        Number(round),
+      ],
     )
 
     console.log(`[SIP] ${winner} won ${formatFfs(winnerAmount)} FFS in round ${round}`)
@@ -132,26 +112,25 @@ async function handleBottleSipped(log) {
 
 async function processLogs(eventName, logs) {
   const sortedLogs = [...logs].sort((a, b) => {
-    if (a.blockNumber === b.blockNumber) return Number(a.logIndex) - Number(b.logIndex)
+    if (a.blockNumber === b.blockNumber) {
+      return Number(a.logIndex) - Number(b.logIndex)
+    }
     return a.blockNumber < b.blockNumber ? -1 : 1
   })
 
   for (const log of sortedLogs) {
-    if (eventName === 'RoundStarted') {
-      await handleRoundStarted(log)
-    } else if (eventName === 'Poured') {
-      await handlePoured(log)
-    } else if (eventName === 'BottleSipped') {
-      await handleBottleSipped(log)
-    }
+    if (eventName === 'RoundStarted') await handleRoundStarted(log)
+    if (eventName === 'Poured') await handlePoured(log)
+    if (eventName === 'BottleSipped') await handleBottleSipped(log)
   }
 }
 
 async function backfillEvent(client, address, abi, eventName, fromBlock, toBlock) {
   const range = BigInt(Number(process.env.LOG_BLOCK_RANGE || DEFAULT_LOG_BLOCK_RANGE))
 
-  for (let start = fromBlock; start <= toBlock; start += range + 1n) {
+  for (let start = fromBlock; start <= toBlock; start = start + range + 1n) {
     const end = start + range > toBlock ? toBlock : start + range
+
     const logs = await client.getContractEvents({
       address,
       abi,
@@ -172,16 +151,12 @@ async function backfillConfirmedEvents(client, address, abi) {
   const latestBlock = await client.getBlockNumber()
   const toBlock = latestBlock > confirmations ? latestBlock - confirmations : latestBlock
 
-  if (startBlock > toBlock) {
-    console.log(`Skipping backfill: START_BLOCK ${startBlock} is above confirmed block ${toBlock}`)
-    return
-  }
+  if (startBlock > toBlock) return
 
-  console.log(`Backfilling FFSBottle events from block ${startBlock} to ${toBlock}`)
+  console.log(`Backfilling FFSBottle events...`)
   await backfillEvent(client, address, abi, 'RoundStarted', startBlock, toBlock)
   await backfillEvent(client, address, abi, 'Poured', startBlock, toBlock)
   await backfillEvent(client, address, abi, 'BottleSipped', startBlock, toBlock)
-  console.log('Backfill complete')
 }
 
 export async function startIndexer() {
@@ -191,53 +166,36 @@ export async function startIndexer() {
 
   await backfillConfirmedEvents(client, address, abi)
 
-  const stopRoundStartedWatch = client.watchContractEvent({
+  const watcherConfig = {
     address,
     abi,
+    pollingInterval: Number(process.env.POLL_INTERVAL_MS || 12000),
+  }
+
+  client.watchContractEvent({
+    ...watcherConfig,
     eventName: 'RoundStarted',
-    onLogs(logs) {
-      processLogs('RoundStarted', logs).catch((error) => console.error('RoundStarted log processing failed:', error))
-    },
-    onError(error) {
-      console.error('RoundStarted event watcher error:', error)
-      setTimeout(() => startIndexer().catch((err) => console.error('Indexer reconnect failed:', err)), RETRY_DELAY_MS)
-    },
-    pollingInterval: Number(process.env.POLL_INTERVAL_MS || 12000),
+    onLogs: (logs) => processLogs('RoundStarted', logs),
+    onError: (error) => console.error('RoundStarted watcher error:', error),
   })
 
-  const stopPouredWatch = client.watchContractEvent({
-    address,
-    abi,
+  client.watchContractEvent({
+    ...watcherConfig,
     eventName: 'Poured',
-    onLogs(logs) {
-      processLogs('Poured', logs).catch((error) => console.error('Poured log processing failed:', error))
-    },
-    onError(error) {
-      console.error('Poured event watcher error:', error)
-      setTimeout(() => startIndexer().catch((err) => console.error('Indexer reconnect failed:', err)), RETRY_DELAY_MS)
-    },
-    pollingInterval: Number(process.env.POLL_INTERVAL_MS || 12000),
+    onLogs: (logs) => processLogs('Poured', logs),
+    onError: (error) => console.error('Poured watcher error:', error),
   })
 
-  const stopSippedWatch = client.watchContractEvent({
-    address,
-    abi,
+  client.watchContractEvent({
+    ...watcherConfig,
     eventName: 'BottleSipped',
-    onLogs(logs) {
-      processLogs('BottleSipped', logs).catch((error) => console.error('BottleSipped log processing failed:', error))
-    },
-    onError(error) {
-      console.error('BottleSipped event watcher error:', error)
-      setTimeout(() => startIndexer().catch((err) => console.error('Indexer reconnect failed:', err)), RETRY_DELAY_MS)
-    },
-    pollingInterval: Number(process.env.POLL_INTERVAL_MS || 12000),
+    onLogs: (logs) => processLogs('BottleSipped', logs),
+    onError: (error) => console.error('BottleSipped watcher error:', error),
   })
 
   console.log(`Indexer started and listening for FFSBottle events at ${address}`)
 
   return () => {
-    stopRoundStartedWatch()
-    stopPouredWatch()
-    stopSippedWatch()
+    console.log('Indexer stopped')
   }
 }

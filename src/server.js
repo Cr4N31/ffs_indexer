@@ -1,12 +1,12 @@
 import dns from "dns"
 dns.setDefaultResultOrder("ipv4first")
+
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import { apiRouter } from './routes/api.js'
 import { connectDb, closeDb } from './db.js'
 import { startIndexer } from './indexer.js'
-
 
 const app = express()
 const port = Number(process.env.PORT || 4000)
@@ -53,15 +53,14 @@ async function initializeIndexer() {
     stopIndexer = await startIndexer()
   } catch (error) {
     console.error('Indexer failed to start:', error)
+    // ❗ FIX: DO NOT crash server
   }
 }
 
 initializeIndexer()
 
 async function shutdown() {
-  if (stopIndexer) {
-    stopIndexer()
-  }
+  if (stopIndexer) stopIndexer()
 
   server.close(() => {
     console.log('Server closed')
