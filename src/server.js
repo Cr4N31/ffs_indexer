@@ -13,13 +13,17 @@ const port = Number(process.env.PORT || 4000)
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || origin.startsWith('http://localhost')) {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://forfoxsakecro.de',
+    ]
+
+    if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true)
     }
-    if (origin === process.env.CORS_ORIGIN) {
-      return callback(null, true)
-    }
-    callback(null, false)
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`))
   }
 }))
 
