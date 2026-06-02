@@ -2,7 +2,7 @@ import { createPublicClient, defineChain, getAddress, http } from 'viem'
 import { readFile } from 'fs/promises'
 
 export async function loadBottleAbi() {
-  const artifactPath = new URL('./ffs-contracts/artifacts/contracts/FFSBottle.sol/FFSBottle.json', import.meta.url)
+  const artifactPath = new URL('../ffs-contracts/artifacts/contracts/FFSBottle.sol/FFSBottle.json', import.meta.url)
   const artifactRaw = await readFile(artifactPath, 'utf8')
   const artifact = JSON.parse(artifactRaw)
   return artifact.abi
