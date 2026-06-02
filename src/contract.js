@@ -35,8 +35,7 @@ export function createChainClient() {
 }
 
 export function getBottleAddress() {
-  if (!process.env.FFS_BOTTLE_ADDRESS) {
-    throw new Error('FFS_BOTTLE_ADDRESS is required.')
-  }
-  return getAddress(process.env.FFS_BOTTLE_ADDRESS)
+  const DEFAULT_FFS_BOTTLE_ADDRESS = '0x93E7a174E1DadfE429De8D0E0f281ee1851820E9'
+  const address = process.env.FFS_BOTTLE_ADDRESS || DEFAULT_FFS_BOTTLE_ADDRESS
+  return getAddress(address)
 }
