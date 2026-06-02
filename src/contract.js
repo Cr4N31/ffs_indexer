@@ -2,7 +2,7 @@ import { createPublicClient, defineChain, getAddress, http } from 'viem'
 import { readFile } from 'fs/promises'
 
 export async function loadBottleAbi() {
-  const artifactPath = new URL('../ffs-contracts/artifacts/contracts/FFSBottle.sol/FFSBottle.json', import.meta.url)
+  const artifactPath = new URL('./ffs-contracts/artifacts/contracts/FFSBottle.sol/FFSBottle.json', import.meta.url)
   const artifactRaw = await readFile(artifactPath, 'utf8')
   const artifact = JSON.parse(artifactRaw)
   return artifact.abi
@@ -38,12 +38,5 @@ export function getBottleAddress() {
   if (!process.env.FFS_BOTTLE_ADDRESS) {
     throw new Error('FFS_BOTTLE_ADDRESS is required.')
   }
-  const address = getAddress(process.env.FFS_BOTTLE_ADDRESS)
-  const expected = getAddress('0x93E7a174E1DadfE429De8D0E0f281ee1851820E9')
-
-  if (address !== expected) {
-    throw new Error(`Unsupported FFS_BOTTLE_ADDRESS ${address}. Expected ${expected}.`)
-  }
-
-  return address
+  return getAddress(process.env.FFS_BOTTLE_ADDRESS)
 }
