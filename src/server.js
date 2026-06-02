@@ -42,7 +42,7 @@ try {
   process.exit(1)
 }
 
-const stopIndexer = await startIndexer()
+const stopIndexer = startIndexer()
 
 const server = app.listen(port, () => {
   console.log(`FFS indexer API listening on http://localhost:${port}`)
