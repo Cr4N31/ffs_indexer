@@ -1,9 +1,9 @@
-import { createPublicClient, http, formatUnits } from 'viem'
-import { cronosTestnet } from 'viem/chains'
-import { getBottleAddress, loadBottleAbi } from './contract.js'
+import { formatUnits } from 'viem'
+import { createChainClient, getBottleAddress, loadBottleAbi } from './contract.js'
 import { query } from './db.js'
 
 const RETRY_DELAY_MS = 5000
+const DEFAULT_LOG_BLOCK_RANGE = 1900
 
 function formatFfs(value) {
   return Number(formatUnits(value, 18))
@@ -18,6 +18,16 @@ async function ensureRoundExists(roundNumber) {
     `,
     [Number(roundNumber)],
   )
+}
+
+async function handleRoundStarted(log) {
+  try {
+    const { round } = log.args
+    await ensureRoundExists(round)
+    console.log(`[ROUND] Round ${round} started`)
+  } catch (error) {
+    console.error(`Failed to record round start event ${log.transactionHash}:`, error)
+  }
 }
 
 async function updateRoundAfterSip(roundNumber, winner, winnerAmount, treasuryAmount) {
@@ -74,7 +84,7 @@ async function handlePoured(log) {
 
     console.log(`[POUR] ${user} poured ${formatFfs(amount)} FFS in round ${round}`)
   } catch (error) {
-    console.error('Failed to record pour event:', error)
+    console.error(`Failed to record pour event ${log.transactionHash}:`, error)
   }
 }
 
@@ -95,35 +105,91 @@ async function handleBottleSipped(log) {
 
     console.log(`[SIP] ${winner} won ${formatFfs(winnerAmount)} FFS in round ${round}`)
   } catch (error) {
-    console.error('Failed to record sip event:', error)
+    console.error(`Failed to record sip event ${log.transactionHash}:`, error)
   }
 }
 
-function createIndexerClient() {
-  const rpcUrl = process.env.RPC_URL
-  if (!rpcUrl) {
-    throw new Error('RPC_URL is required to start the indexer')
+async function processLogs(eventName, logs) {
+  const sortedLogs = [...logs].sort((a, b) => {
+    if (a.blockNumber === b.blockNumber) return Number(a.logIndex) - Number(b.logIndex)
+    return a.blockNumber < b.blockNumber ? -1 : 1
+  })
+
+  for (const log of sortedLogs) {
+    if (eventName === 'RoundStarted') {
+      await handleRoundStarted(log)
+    } else if (eventName === 'Poured') {
+      await handlePoured(log)
+    } else if (eventName === 'BottleSipped') {
+      await handleBottleSipped(log)
+    }
+  }
+}
+
+async function backfillEvent(client, address, abi, eventName, fromBlock, toBlock) {
+  const range = BigInt(Number(process.env.LOG_BLOCK_RANGE || DEFAULT_LOG_BLOCK_RANGE))
+
+  for (let start = fromBlock; start <= toBlock; start += range + 1n) {
+    const end = start + range > toBlock ? toBlock : start + range
+    const logs = await client.getContractEvents({
+      address,
+      abi,
+      eventName,
+      fromBlock: start,
+      toBlock: end,
+    })
+
+    if (logs.length > 0) {
+      await processLogs(eventName, logs)
+    }
+  }
+}
+
+async function backfillConfirmedEvents(client, address, abi) {
+  const startBlock = BigInt(process.env.START_BLOCK || 0)
+  const confirmations = BigInt(process.env.CONFIRMATIONS || 0)
+  const latestBlock = await client.getBlockNumber()
+  const toBlock = latestBlock > confirmations ? latestBlock - confirmations : latestBlock
+
+  if (startBlock > toBlock) {
+    console.log(`Skipping backfill: START_BLOCK ${startBlock} is above confirmed block ${toBlock}`)
+    return
   }
 
-  return createPublicClient({
-    chain: cronosTestnet,
-    transport: http(rpcUrl),
-  })
+  console.log(`Backfilling FFSBottle events from block ${startBlock} to ${toBlock}`)
+  await backfillEvent(client, address, abi, 'RoundStarted', startBlock, toBlock)
+  await backfillEvent(client, address, abi, 'Poured', startBlock, toBlock)
+  await backfillEvent(client, address, abi, 'BottleSipped', startBlock, toBlock)
+  console.log('Backfill complete')
 }
 
 export async function startIndexer() {
-  const client = createIndexerClient()
+  const client = createChainClient()
   const address = getBottleAddress()
   const abi = await loadBottleAbi()
+
+  await backfillConfirmedEvents(client, address, abi)
+
+  const stopRoundStartedWatch = client.watchContractEvent({
+    address,
+    abi,
+    eventName: 'RoundStarted',
+    onLogs(logs) {
+      processLogs('RoundStarted', logs).catch((error) => console.error('RoundStarted log processing failed:', error))
+    },
+    onError(error) {
+      console.error('RoundStarted event watcher error:', error)
+      setTimeout(() => startIndexer().catch((err) => console.error('Indexer reconnect failed:', err)), RETRY_DELAY_MS)
+    },
+    pollingInterval: Number(process.env.POLL_INTERVAL_MS || 12000),
+  })
 
   const stopPouredWatch = client.watchContractEvent({
     address,
     abi,
     eventName: 'Poured',
     onLogs(logs) {
-      for (const log of logs) {
-        handlePoured(log)
-      }
+      processLogs('Poured', logs).catch((error) => console.error('Poured log processing failed:', error))
     },
     onError(error) {
       console.error('Poured event watcher error:', error)
@@ -137,9 +203,7 @@ export async function startIndexer() {
     abi,
     eventName: 'BottleSipped',
     onLogs(logs) {
-      for (const log of logs) {
-        handleBottleSipped(log)
-      }
+      processLogs('BottleSipped', logs).catch((error) => console.error('BottleSipped log processing failed:', error))
     },
     onError(error) {
       console.error('BottleSipped event watcher error:', error)
@@ -148,9 +212,10 @@ export async function startIndexer() {
     pollingInterval: Number(process.env.POLL_INTERVAL_MS || 12000),
   })
 
-  console.log('Indexer started and listening for FFSBottle events')
+  console.log(`Indexer started and listening for FFSBottle events at ${address}`)
 
   return () => {
+    stopRoundStartedWatch()
     stopPouredWatch()
     stopSippedWatch()
   }

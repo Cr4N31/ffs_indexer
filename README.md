@@ -1,18 +1,23 @@
 # FFS Indexer Backend
 
-Backend indexer for the For Fox Sake Dapp.
+Production backend indexer for the For Fox Sake dApp.
 
-This service watches the `FFSBottle` contract for `Poured` and `BottleSipped` events, writes them to PostgreSQL, and exposes REST APIs for frontend consumption.
+This service watches the production `FFSBottle` contract for `RoundStarted`, `Poured`, and `BottleSipped` events, writes them to PostgreSQL, and exposes REST APIs for frontend consumption.
 
-## Prerequisites
+## Required Production Configuration
 
-- Node.js 18+ installed
-- npm available
-- PostgreSQL database
-- Access to a Cronos-compatible RPC endpoint
-- `FFSBottle` contract ABI JSON available locally
+```env
+RPC_URL=https://evm.cronos.org
+CHAIN_ID=25
+CHAIN_NAME=Cronos Mainnet
+FFS_TOKEN_ADDRESS=0xf9D90e9f8E3fcc41D44e220deDB73DF6c42c8244
+FFS_BOTTLE_ADDRESS=0x93E7a174E1DadfE429De8D0E0f281ee1851820E9
+TREASURY_WALLET=0x75d04bcA6B542Fe1f3EeE8196DEB2C2675dAABcb
+```
 
-## Install and run locally
+The treasury wallet is a fee receiver only. The indexer listens only to `FFS_BOTTLE_ADDRESS`.
+
+## Install And Run
 
 ```bash
 cd ffs-indexer
@@ -22,53 +27,32 @@ npm run db:schema
 npm run dev
 ```
 
-## Environment variables
+## Environment Variables
 
-The indexer uses the following variables from `.env`:
+- `PORT` - optional API server port.
+- `DATABASE_URL` - PostgreSQL connection string.
+- `RPC_URL` - must be `https://evm.cronos.org`.
+- `CHAIN_ID` - must be `25`.
+- `CHAIN_NAME` - must be `Cronos Mainnet`.
+- `FFS_TOKEN_ADDRESS` - canonical FFS ERC20 token address.
+- `FFS_BOTTLE_ADDRESS` - canonical `FFSBottle` contract address.
+- `TREASURY_WALLET` - canonical treasury wallet, not indexed as a contract.
+- `START_BLOCK` - starting block for backfill.
+- `CONFIRMATIONS` - confirmations to wait before backfilling up to a block.
+- `LOG_BLOCK_RANGE` - optional max block span per `getLogs` request, default `1900`.
+- `CORS_ORIGIN` - allowed frontend origin.
+- `POLL_INTERVAL_MS` - optional watcher polling interval.
 
-- `PORT` — optional API server port (default: `4000`)
-- `DATABASE_URL` — PostgreSQL connection string
-- `RPC_URL` — RPC endpoint used for event watching
-- `CHAIN_ID` — optional chain ID, currently the indexer uses Cronos Testnet by default
-- `CHAIN_NAME` — optional chain name
-- `FFS_BOTTLE_ADDRESS` — deployed `FFSBottle` contract address
-- `FFS_BOTTLE_ABI_PATH` — path to the local `FFSBottle.json` ABI file
-- `START_BLOCK` — starting block for event indexing (used by the indexer logic)
-- `CONFIRMATIONS` — optional confirmations to wait for event stability
-- `CORS_ORIGIN` — allowed frontend origin for API requests (default in example: `http://localhost:5173`)
-- `POLL_INTERVAL_MS` — optional contract watcher polling interval in milliseconds
+## API Endpoints
 
-## Database setup
+- `GET /api/winners` - returns recent `BottleSipped` winners.
+- `GET /api/activity` - returns recent `Poured` and `BottleSipped` activity.
+- `GET /api/stats` - returns aggregate stats.
+- `GET /api/holders` - returns unique pouring wallets from indexed pours.
+- `GET /health` - health check.
 
-Run the schema script to create the required tables:
+## Production Notes
 
-```bash
-npm run db:schema
-```
-
-This executes `src/schema.js` and applies the SQL in `schema.sql`.
-
-## API endpoints
-
-- `GET /api/winners` — returns recent `BottleSipped` winners
-- `GET /api/activity` — returns recent `Poured` and `BottleSipped` activity
-- `GET /api/stats` — returns aggregate stats such as total pours, total sips, amounts paid to winners and treasury, and latest round
-- `GET /health` — simple health check endpoint
-
-## What the indexer does
-
-- Connects to PostgreSQL using `DATABASE_URL`
-- Watches the `FFSBottle` contract for `Poured` and `BottleSipped` events
-- Records pours, winners, and round summary data
-- Serves aggregated data to the frontend via REST APIs
-
-## Start production server
-
-```bash
-npm start
-```
-
-## Notes
-
-- The indexer is designed to run alongside the frontend, providing event history and aggregate stats.
-- Ensure the frontend `VITE_FFS_API_URL` points to the indexer API server.
+- Backfill runs from `START_BLOCK` to the latest confirmed block in Cronos-safe block ranges.
+- Inserts are idempotent by transaction hash, so restarts do not duplicate records.
+- Set `START_BLOCK` to the deployment block for `0x93E7a174E1DadfE429De8D0E0f281ee1851820E9` for faster startup.
