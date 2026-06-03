@@ -11,18 +11,18 @@ import { startIndexer } from './indexer.js'
 const app = express()
 const port = Number(process.env.PORT || 4000)
 
+// ← FIXED: added Vercel URL to allowed origins
 app.use(cors({
   origin: (origin, callback) => {
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:5173',
       'https://forfoxsakecro.de',
+      'https://for-fox-sake.vercel.app',
     ]
-
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true)
     }
-
     return callback(new Error(`CORS blocked for origin: ${origin}`))
   }
 }))
@@ -57,7 +57,6 @@ async function initializeIndexer() {
     stopIndexer = await startIndexer()
   } catch (error) {
     console.error('Indexer failed to start:', error)
-    // ❗ FIX: DO NOT crash server
   }
 }
 
@@ -65,11 +64,9 @@ initializeIndexer()
 
 async function shutdown() {
   if (stopIndexer) stopIndexer()
-
   server.close(() => {
     console.log('Server closed')
   })
-
   await closeDb()
 }
 
