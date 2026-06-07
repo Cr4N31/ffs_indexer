@@ -38,6 +38,12 @@ export default defineConfig({
       chainType: "l1",
       url: "http://127.0.0.1:8545",
     },
+    cronos: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("CRONOS_MAINNET_RPC_URL"),
+      accounts: [configVariable("CRONOS_MAINNET_PRIVATE_KEY")],
+    },
   },
 
   verify: {
@@ -58,4 +64,6 @@ export default defineConfig({
       },
     },
   },
+
+
 });

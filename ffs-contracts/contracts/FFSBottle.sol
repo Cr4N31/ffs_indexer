@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from  "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract FFSBottle is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -12,7 +12,6 @@ contract FFSBottle is Ownable, ReentrancyGuard {
     IERC20 public immutable ffsToken;
 
     address public constant TREASURY_WALLET = 0x75d04bcA6B542Fe1f3EeE8196DEB2C2675dAABcb;
-    uint256 public constant SEED_AMOUNT = 100_000 ether;
     uint256 public constant POUR_AMOUNT = 1_000 ether;
     uint256 public constant MIN_THRESHOLD = 50_000 ether;
     uint256 public constant MAX_THRESHOLD = 300_000 ether;
@@ -27,12 +26,10 @@ contract FFSBottle is Ownable, ReentrancyGuard {
 
     uint256 internal secretThreshold;
 
-    event RoundStarted(uint256 indexed round, uint256 threshold);
+    event RoundStarted(uint256 indexed round);
     event Poured(
         uint256 indexed round,
         address indexed user,
-        uint256 amount,
-        uint256 croAmount,
         uint256 ffsAmount,
         uint256 bottleBalance,
         uint256 roundPours
@@ -45,33 +42,26 @@ contract FFSBottle is Ownable, ReentrancyGuard {
         uint256 treasuryAmount
     );
 
-    error RoundAlreadyActive();
     error RoundNotActive();
     error InvalidTokenAddress();
 
     constructor(IERC20 token_, address admin_) Ownable(admin_) {
         if (address(token_) == address(0)) revert InvalidTokenAddress();
         ffsToken = token_;
-    }
-
-    function seed() external onlyOwner nonReentrant {
-        if (roundActive) revert RoundAlreadyActive();
-
-        ffsToken.safeTransferFrom(msg.sender, address(this), SEED_AMOUNT);
         _startRound();
     }
 
-    function pour(uint256 ffsAmount) external payable nonReentrant {
+    /// @notice Pour 1,000 FFS into the bottle. Caller must approve POUR_AMOUNT first.
+    function pour() external nonReentrant {
         if (!roundActive) revert RoundNotActive();
-        require(msg.value > 0, "CRO amount must be greater than zero");
 
-        payable(TREASURY_WALLET).transfer(msg.value);
+        ffsToken.safeTransferFrom(msg.sender, address(this), POUR_AMOUNT);
 
         uint256 balance = bottleBalance();
         roundPours += 1;
         totalPours += 1;
 
-        emit Poured(currentRound, msg.sender, msg.value, msg.value, ffsAmount, balance, roundPours);
+        emit Poured(currentRound, msg.sender, POUR_AMOUNT, balance, roundPours);
 
         if (balance >= secretThreshold) {
             _sip(msg.sender, balance);
@@ -110,7 +100,7 @@ contract FFSBottle is Ownable, ReentrancyGuard {
         roundActive = true;
         secretThreshold = _pickSecretThreshold();
 
-        emit RoundStarted(currentRound, secretThreshold);
+        emit RoundStarted(currentRound);
     }
 
     function _pickSecretThreshold() internal view virtual returns (uint256) {
@@ -126,7 +116,6 @@ contract FFSBottle is Ownable, ReentrancyGuard {
                 )
             )
         );
-
         return MIN_THRESHOLD + (random % span);
     }
 }
