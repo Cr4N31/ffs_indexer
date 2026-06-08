@@ -2,7 +2,6 @@ import { formatUnits } from 'viem'
 import { createChainClient, getBottleAddress, loadBottleAbi } from './contract.js'
 import { query } from './db.js'
 
-const RETRY_DELAY_MS = 5000
 const DEFAULT_LOG_BLOCK_RANGE = 1900
 
 function formatFfs(value) {
@@ -23,7 +22,6 @@ async function ensureRoundExists(roundNumber) {
 async function handleRoundStarted(log) {
   try {
     if (!log?.args) return
-
     const { round } = log.args
     await ensureRoundExists(round)
     console.log(`[ROUND] Round ${round} started`)
@@ -36,7 +34,7 @@ async function handlePoured(log) {
   try {
     if (!log?.args) return
 
-    const { round, user, croAmount, ffsAmount, bottleBalance, roundPours } = log.args
+    const { round, user, ffsAmount } = log.args
 
     await ensureRoundExists(round)
 
@@ -45,32 +43,22 @@ async function handlePoured(log) {
         insert into pours (
           wallet_address,
           amount,
-          cro_amount,
-          ffs_amount,
-          bottle_balance,
-          round_pours,
           transaction_hash,
           round_number,
           poured_at
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, now())
+        values ($1, $2, $3, $4, now())
         on conflict (transaction_hash) do nothing
       `,
       [
         user,
-        formatUnits(croAmount, 18),
-        formatUnits(croAmount, 18),
         formatUnits(ffsAmount, 18),
-        formatUnits(bottleBalance, 18),
-        Number(roundPours),
         log.transactionHash,
         Number(round),
       ],
     )
 
-    console.log(
-      `[POUR] ${user} poured ${formatFfs(croAmount)} CRO and ${formatFfs(ffsAmount)} FFS in round ${round}`,
-    )
+    console.log(`[POUR] ${user} poured ${formatFfs(ffsAmount)} FFS in round ${round}`)
   } catch (error) {
     console.error(`Failed to record pour event ${log.transactionHash}:`, error)
   }
