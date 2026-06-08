@@ -63,7 +63,7 @@ export function createChainClient() {
 }
 
 export function getBottleAddress() {
-const DEFAULT_FFS_BOTTLE_ADDRESS = '0x93E7a174E1DadfE429De8D0E0f281ee1851820E9'
+const DEFAULT_FFS_BOTTLE_ADDRESS = '0x11cc5f9b4012a08fb9fd46fa47ad96e37a5f2605'
   const address = process.env.FFS_BOTTLE_ADDRESS || DEFAULT_FFS_BOTTLE_ADDRESS
   return getAddress(address)
 }
